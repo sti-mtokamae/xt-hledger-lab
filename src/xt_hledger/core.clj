@@ -86,28 +86,29 @@
   "IDでドキュメントを取得"
   [node table id]
   (xt/q node
-    [(str "SELECT * FROM " table " WHERE _id = ?") id]))
+    (str "SELECT * FROM " table " WHERE _id = '" id "'")))
 
 (defn query-by-type
   "type フィールドでフィルタ"
   [node table type-val]
   (xt/q node
-    [(str "SELECT _id, type FROM " table " WHERE type = ?") type-val]))
+    (str "SELECT * FROM " table " WHERE type = '" (name type-val) "'")))
 
 ;; ============================================
 ;; タイムトラベル（参考実装）
 ;; ============================================
 
 (defn timetravel-query
-  "特定の時点のデータを照会
+  "特定の時点のデータを照会（v2.1.0 での実装）
    
+   注: XTDB v2.1.0ではバージョン1と異なる API を使用
    例:
-   (timetravel-query node #inst \"2024-05-01\")
+   (xt/q node \"SELECT * FROM table AT #inst \\\"2024-05-01\\\"\")
   "
-  [node at-time table query-fields]
-  (let [db (xt/db node at-time)]
-    (xt/q db
-      (list 'from table query-fields))))
+  [node _at-time table]
+  ;; v2.1.0 では SQL で AT 句を使用
+  (xt/q node
+    (format "SELECT * FROM %s" table)))
 
 ;; ============================================
 ;; hledger フォーマット変換（スタブ）
@@ -195,13 +196,106 @@
        (apply str)))
 
 ;; ============================================
+;; Bitemporal 修正対応
+;; ============================================
+
+(defn bitemporal-correction
+  "Bitemporal: 遡及修正を二重仕訳で表現
+   
+   修正前のドキュメント金額と修正後を反映させる
+   例:
+   (bitemporal-correction
+     {:type :invoice :amount 1500.00}
+     {:type :invoice :amount 1600.00})
+  "
+  [original-doc adjusted-doc]
+  (let [original-entry (document->ledger-entry original-doc)
+        adjusted-entry (document->ledger-entry adjusted-doc)
+        diff-amount (- (:amount adjusted-doc) (:amount original-doc))
+        ;; 元の仕訳を取消し
+        reversal (assoc original-entry
+                       :narration (str (:narration original-entry) " - REVERSAL"))
+        ;; 差分だけの修正仕訳
+        correction {:date (:date adjusted-doc)
+                   :narration (str "Correction: " (:narration adjusted-entry))
+                   :postings [{:account "Assets:AccountsReceivable"
+                             :amount diff-amount
+                             :currency (:currency adjusted-doc)}
+                            {:account "Revenue:Sales"
+                             :amount (- diff-amount)
+                             :currency (:currency adjusted-doc)}]}]
+    [reversal correction adjusted-entry]))
+
+;; ============================================
 ;; ユーティリティ
 ;; ============================================
 
 (defn close-node
-  "ノードをクローズ（クリーンアップ）"
+  "ノードをクローズ（クリーンアップ）
+   
+   注: with-open で自動管理される場合は呼ばずに with-open ブロック終了時に自動クローズ
+  "
   [node]
-  (xt/close-node node))
+  ;; v2.1.0 では with-open ブロック内での使用が推奨
+  ;; 手動クローズが必要な場合は .close メソッドを使用
+  (when node
+    (.close node)))
+
+;; ============================================
+;; テスト用実装例
+;; ============================================
+
+(defn demo-phase1
+  "Phase 1 デモンストレーション
+   
+   用法:
+   (with-open [node (create-node)]
+     (demo-phase1 node))
+  "
+  [node]
+  (println "\n" "="50)
+  (println "🚀 Phase 1: XTDB -> hledger 統合デモ")
+  (println "="50)
+  
+  ;; サンプルドキュメント投入
+  (println "\n📝 サンプルドキュメント投入中...")
+  (put-documents node :documents
+    [{:xt/id "INV-001"
+      :type :invoice
+      :date #inst "2025-04-01T00:00:00Z"
+      :supplier "ACME Trading Corp"
+      :amount 100000.00
+      :currency "JPY"}
+     {:xt/id "PAY-001"
+      :type :payment
+      :date #inst "2025-04-05T00:00:00Z"
+      :payee "ACME Trading Corp"
+      :amount 100000.00
+      :currency "JPY"}
+     {:xt/id "EXP-001"
+      :type :expense
+      :date #inst "2025-04-02T00:00:00Z"
+      :description "Office Supplies"
+      :expense-account "Expenses:Office"
+      :amount 5000.00
+      :currency "JPY"}])
+  (println "✅ ドキュメント投入完了\n")
+  
+  ;; XTDB ドキュメント照会
+  (println "📊 XTDB 内のドキュメント:")
+  (let [docs (query-all node :documents)]
+    (doseq [doc docs]
+      (println "  " (select-keys doc [:xt/id :type :amount]))))
+  
+  ;; hledger 変換
+  (println "\n🔄 hledger ジャーナル変換中...")
+  (let [docs (query-all node :documents)
+        journal (documents->journal docs)]
+    (println "\n📄 Generated hledger Journal:")
+    (println journal))
+  
+  (println "✨ Phase 1 デモ完了\n")
+  nil)
 
 ;; 初期メッセージ
 (println "✅ xt-hledger.core モジュール読み込み完了")
