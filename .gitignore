@@ -1,0 +1,51 @@
+# Clojure/Leiningen
+*.jar
+*.class
+/lib/
+/classes/
+/target/
+.lein-deps-sum
+.lein-repl-history
+.lein-plugins/
+pom.xml
+pom.xml.asc
+
+# Clojure CLI
+.cpcache/
+
+# clj-kondo cache
+.clj-kondo/
+
+# XTDB runtime
+.xtdb/
+xtdb-*
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Emacs
+*~
+*.go
+.\#*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Guix
+/go-modules/
+/pre-inst-env
+.#*
+
+# hledger
+*.bak
+.hledger_cache
+
+# Environment
+.env
+.env.local

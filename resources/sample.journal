@@ -1,0 +1,41 @@
+; resources/sample.journal
+; hledger Plain Text Accounting のサンプルデータ
+; 貿易ドキュメント管理での二時系（Bitemporal）会計を想定
+;
+; 使用方法:
+;   hledger -f resources/sample.journal balance
+;   hledger -f resources/sample.journal is      # 損益計算書
+;   hledger -f resources/sample.journal bs      # 貸借対照表
+
+2024-05-01 * インボイス発行 INV-001
+    Assets:Receivables:USD                  1,500 USD
+    Income:Sales                           -1,500 USD
+
+2024-05-05 * 関連書類作成
+    Expenses:Office Supplies                   50 JPY
+    Assets:Cash                               -50 JPY
+
+2024-05-10 * 入金確認（部分入金）
+    Assets:Bank Account                    150,000 JPY
+    Assets:Receivables:USD                 -1,000 USD @ 150 JPY
+    Revenues:ForeignExchange:Change
+
+2024-05-12 * 通関手数料（遡及反映）
+    ; Bitemporal な例: 5/1 有効だが、5/12 に記録
+    Expenses:Customs                          100 USD
+    Assets:Receivables:USD                  -100 USD
+
+2024-05-15 * 船積実績
+    Income:Sales                            5,000 JPY
+    Assets:Inventory                       -5,000 JPY
+
+2024-05-20 * 通関手数料支払
+    Expenses:Tariffs                        3,000 JPY
+    Assets:Cash                            -3,000 JPY
+
+2024-05-31 * 残高確認
+    Assets:Bank Account                    150,000 JPY
+    Assets:Receivables:USD                  2,500 USD
+    Assets:Inventory                            0 JPY
+    Liabilities:Accounts Payable           -3,000 JPY
+    Equity:Opening Balance                -150,000 JPY

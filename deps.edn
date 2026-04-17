@@ -1,0 +1,27 @@
+{:deps {;; XTDB v2.1.0 - Bitemporal database with PostgreSQL support (built-in to core)
+         com.xtdb/xtdb-core      {:mvn/version "2.1.0"}
+
+         ;; Clojure standard libraries
+         org.clojure/clojure      {:mvn/version "1.12.0"}
+         org.clojure/tools.cli    {:mvn/version "1.0.219"}
+
+         ;; PostgreSQL JDBC driver
+         org.postgresql/postgresql {:mvn/version "42.7.1"}
+         com.zaxxer/HikariCP     {:mvn/version "5.1.0"}
+
+         ;; Utilities
+         org.clojure/tools.logging {:mvn/version "1.2.4"}
+         }
+
+ ;; Maven repositories with fallbacks
+ :mvn/repos
+ {"central"   {:url "https://repo1.maven.org/maven2/"}
+  "aliyun-central" {:url "https://maven.aliyun.com/repository/central"}
+  "clojars"   {:url "https://repo.clojars.org/"}
+  "clojars-mirror" {:url "https://mirrors.aliyun.com/clojars/"}}
+
+ :aliases
+ {:xtdb {:jvm-opts ["--add-opens=java.base/java.nio=ALL-UNNAMED"
+                     "--enable-native-access=ALL-UNNAMED"
+                     "-Dio.netty.tryReflectionSetAccessible=true"]}
+  :test {:main-opts ["-m" "clojure.main"]}}}
