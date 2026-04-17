@@ -265,6 +265,36 @@ rlwrap clj -i examples/02_xtdb_v2_basics.clj
      :xt/valid-time #inst "2024-05-01T00:00:00Z"}]})
 ```
 
+## プロジェクト構成
+
+```
+xt-hledger-lab/
+├── README.md                           # このファイル
+├── docs/                               # ドキュメント
+│   ├── SETUP.md                        # セットアップガイド（JVM オプション、トラブルシューティング）
+│   ├── STATUS_SUMMARY.md               # プロジェクト状態と成果物まとめ
+│   └── IMPLEMENTATION_GUIDE.md         # Phase 1-3 実装ロードマップ
+├── src/xt_hledger/                     # メイン Clojure ソースコード
+│   └── core.clj                        # XTDB v2 + hledger 統合 API
+├── examples/                           # 実行例・チュートリアル
+│   ├── 02_xtdb_v2_basics.clj           # インメモリ XTDB v2 基础
+│   ├── 03_xtdb_v2_postgresql.clj       # PostgreSQL バックエンド例
+│   └── xtdb_v2_complete.clj            # 完全な動作例（✅ 動作確認済）
+├── resources/                          # リソース
+│   └── sample.journal                  # サンプル hledger ジャーナル
+├── test/                               # テスト
+├── deps.edn                            # 主要 Clojure 依存定義（✅ 動作確認版）
+├── deps-v1.edn                         # バックアップ依存定義
+├── manifest.scm                        # Guix 環境定義
+└── .gitignore                          # Git 無視設定
+```
+
+### ドキュメント読み方
+
+1. **セットアップ中:** [docs/SETUP.md](docs/SETUP.md) を参照（環境構築の手順とトラブルシューティング）
+2. **現在の状態確認:** [docs/STATUS_SUMMARY.md](docs/STATUS_SUMMARY.md) を参照（XTDB v2 動作確認状況）
+3. **実装を始める:** [docs/IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md) を参照（Phase 1-3 具体的タスク分解）
+
 ## リソース
 
 - **XTDB 公式ドキュメント**: https://docs.xtdb.com/
