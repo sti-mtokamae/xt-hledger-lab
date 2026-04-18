@@ -80,19 +80,19 @@
   "テーブル内のすべてのドキュメントを取得（SQL版）"
   [node table]
   (xt/q node
-    (str "SELECT * FROM " table)))
+    (str "SELECT * FROM " (name table))))
 
 (defn query-by-id
   "IDでドキュメントを取得"
   [node table id]
   (xt/q node
-    (str "SELECT * FROM " table " WHERE _id = '" id "'")))
+    (str "SELECT * FROM " (name table) " WHERE _id = '" id "'")))
 
 (defn query-by-type
   "type フィールドでフィルタ"
   [node table type-val]
   (xt/q node
-    (str "SELECT * FROM " table " WHERE type = '" (name type-val) "'")))
+    (str "SELECT * FROM " (name table) " WHERE type = '" (name type-val) "'")))
 
 ;; ============================================
 ;; タイムトラベル（参考実装）
@@ -108,7 +108,7 @@
   [node _at-time table]
   ;; v2.1.0 では SQL で AT 句を使用
   (xt/q node
-    (format "SELECT * FROM %s" table)))
+    (format "SELECT * FROM %s" (name table))))
 
 ;; ============================================
 ;; hledger フォーマット変換（スタブ）
