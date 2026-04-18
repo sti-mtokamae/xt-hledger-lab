@@ -46,6 +46,16 @@ Thumbs.db
 *.bak
 .hledger_cache
 
+# Calva REPL (session files)
+.calva/repl.calva-repl
+.calva/
+
+# nREPL
+.nrepl-port
+
+# LSP cache (large, generated)
+.lsp/
+
 # Environment
 .env
 .env.local
