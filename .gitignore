@@ -22,7 +22,10 @@ xtdb-*
 
 # IDEs
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
 *.swp
 *.swo
 *~
@@ -46,9 +49,8 @@ Thumbs.db
 *.bak
 .hledger_cache
 
-# Calva REPL (session files)
+# Calva REPL (session files only)
 .calva/repl.calva-repl
-.calva/
 
 # nREPL
 .nrepl-port

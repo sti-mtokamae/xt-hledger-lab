@@ -1,0 +1,35 @@
+{
+  "calva.replConnectSequenceSnippets": [
+    {
+      "name": "XTDB with deps.edn",
+      "projectType": "deps.edn",
+      "autoSelectIfSingle": true,
+      "afterCLJReplJackInCode": "(do (require '[xt-hledger.core]) nil)",
+      "cljsType": "none"
+    }
+  ],
+  "calva.jackInTemplates": [
+    {
+      "projectType": "deps.edn",
+      "name": "XTDB Backend",
+      "cljLaunchCommand": "clj",
+      "cljLaunchCommandArgs": ["-A:xtdb"],
+      "cljsLaunchCommand": "",
+      "cljsLaunchCommandArgs": ""
+    }
+  ],
+  "calva.outputDestinations": {
+    "evalResults": "terminal",
+    "evalOutput": "terminal",
+    "otherOutput": "terminal",
+    "repl": "terminal"
+  },
+  "[clojure]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "betterthantomorrow.calva"
+  },
+  "calva.paredit.enabled": true,
+  "calva.prettyPrintingOptions": {
+    "enabled": true
+  }
+}
