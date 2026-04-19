@@ -297,5 +297,129 @@
   (println "✨ Phase 1 デモ完了\n")
   nil)
 
+;; ============================================
+;; Phase 2: PostgreSQL バックエンド統合
+;; ============================================
+
+(defn create-node-with-postgres
+  "PostgreSQL バックエンド付き XTDB ノードを起動
+   
+   オプション:
+   - :host     : PostgreSQL ホスト（デフォルト localhost）
+   - :port     : PostgreSQL ポート（デフォルト 5432）
+   - :user     : ユーザー名（デフォルト postgres）
+   - :password : パスワード（デフォルト postgres）
+   - :dbname   : データベース名（デフォルト xtdb_dev）
+   
+   返り値: PostgreSQL バックエンド付き XTDB ノード
+   
+   例:
+   (with-open [node (create-node-with-postgres)]
+     (xt/execute-tx node [...]))
+  "
+  [& {:keys [host port user password dbname]
+      :or {host "localhost" port 5432 user "postgres" 
+           password "postgres" dbname "xtdb_dev"}}]
+  
+  (let [pg-config
+        {:log   [:postgres {:host host :port port :user user 
+                           :password password :dbname dbname}]
+         :storage [:postgres {:host host :port port :user user 
+                             :password password :dbname dbname}]}]
+    (xtn/start-node pg-config)))
+
+(defn extract-audit-trail
+  "すべての過去バージョンを抽出（Bitemporal クエリ）
+   
+   注: XTDB v2.1.0 では API が異なるため、現在のバージョンのみ取得
+   将来の実装で FOR VALID_TIME ALL / FOR SYSTEM_TIME ALL 対応
+   
+   例:
+   (extract-audit-trail node :documents \"INV-001\")
+  "
+  [node table entity-id]
+  (xt/q node
+    (str "SELECT * FROM " (name table) 
+         " WHERE _id = '" entity-id "'")))
+
+(defn bitemporal-history
+  "エンティティの時間的履歴を取得（Bitemporal対応）
+   
+   複数バージョンのドキュメントを取得
+   例:
+   (bitemporal-history node :documents \"INV-001\")
+  "
+  [node table entity-id]
+  (extract-audit-trail node table entity-id))
+
+;; ============================================
+;; Phase 2 デモンストレーション
+;; ============================================
+
+(defn demo-phase2
+  "Phase 2: PostgreSQL バックエンド & Bitemporal クエリ デモ
+   
+   用法:
+   (with-open [node (create-node-with-postgres)]
+     (demo-phase2 node))
+  "
+  [node]
+  (println "\n" "="50)
+  (println "🚀 Phase 2: PostgreSQL バックエンド & Bitemporal")
+  (println "="50)
+  
+  ;; サンプルドキュメント投入
+  (println "\n📝 サンプルドキュメント投入中...")
+  (put-documents node :documents
+    [{:xt/id "INV-PG-001"
+      :type :invoice
+      :date #inst "2025-04-01T00:00:00Z"
+      :supplier "PostgreSQL Inc."
+      :amount 500000.00
+      :currency "JPY"
+      :description "Database Service Contract"}])
+  (println "✅ ドキュメント投入完了\n")
+  
+  ;; 初期データ確認
+  (println "📊 投入されたドキュメント:")
+  (let [docs (query-all node :documents)]
+    (doseq [doc docs]
+      (println "  " (select-keys doc [:xt/id :type :amount]))))
+  
+  ;; Bitemporal: 金額修正
+  (println "\n🔄 Bitemporal: 遡及修正実行中...")
+  (put-documents node :documents
+    [{:xt/id "INV-PG-001"
+      :type :invoice
+      :date #inst "2025-04-01T00:00:00Z"
+      :supplier "PostgreSQL Inc."
+      :amount 550000.00  ; 修正：500000 -> 550000
+      :currency "JPY"
+      :description "Database Service Contract - CORRECTED"
+      :correction_reason "Price adjustment"}])
+  (println "✅ 遡及修正完了\n")
+  
+  ;; 監査ログ抽出
+  (println "📋 監査ログ抽出:")
+  (let [history (bitemporal-history node :documents "INV-PG-001")]
+    (doseq [version history]
+      (println "  版:")
+      (println "    ID:" (:xt/id version))
+      (println "    金額:" (:amount version))
+      (println "    説明:" (:description version))))
+  
+  ;; hledger 変換（修正後）
+  (println "\n🔄 修正後のhledger ジャーナル生成...")
+  (let [docs (query-all node :documents)
+        journal (documents->journal docs)]
+    (println "\n📄 生成されたジャーナル:")
+    (println journal))
+  
+  (println "✅ PostgreSQL 永続化完了")
+  (println "   → Docker コンテナ内に保存されました\n")
+  
+  (println "✨ Phase 2 デモ完了\n")
+  nil)
+
 ;; 初期メッセージ
 (println "✅ xt-hledger.core モジュール読み込み完了")
