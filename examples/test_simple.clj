@@ -4,13 +4,14 @@
 (println "Starting XTDB v2.1.0 artifact test...")
 (println "Loading com.xtdb/xtdb-core:2.1.0...")
 
-(require '[xtdb.api :as xt])
+(require '[xtdb.node :as xtn]
+         '[xtdb.api :as xt])
 
 (println "✅ XTDB v2.1.0 loaded successfully!")
 
 ;; インメモリノード作成
 (println "\nCreating in-memory node...")
-(def node (xt/start-node {}))
+(def node (xtn/start-node {}))
 (println "✅ Node started!")
 
 ;; ノード情報
@@ -21,11 +22,11 @@
 
 ;; トランザクション送信テスト
 (println "\n📝 Submitting test document...")
-(xt/submit-tx node
-  [[:put :person
-    {:xt/id "alice"
-     :name "Alice"
-     :age 30}]])
+(xt/execute-tx node
+               [[:put-docs :person
+                 {:xt/id "alice"
+                  :name "Alice"
+                  :age 30}]])
 
 (println "✅ Document submitted!")
 
@@ -33,9 +34,7 @@
 (println "\n🔍 Running query...")
 (def results
   (xt/q node
-    '(find ?name ?age
-      :where [[?e :name ?name]
-              [?e :age ?age]])))
+        "SELECT name, age FROM person"))
 
 (println "✅ Query results:" results)
 
@@ -43,4 +42,4 @@
 (println "🎉 All basic tests passed!")
 (println "=" 50)
 
-(System/exit 0)
+;; (System/exit 0)
