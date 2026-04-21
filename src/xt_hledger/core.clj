@@ -7,7 +7,9 @@
 
 (ns xt-hledger.core
   (:require [xtdb.node :as xtn]
-            [xtdb.api :as xt]))
+            [xtdb.api :as xt])
+  (:import [java.sql DriverManager Connection]
+           [java.util UUID]))
 
 ;; ============================================
 ;; XTDB ノード管理
@@ -535,6 +537,169 @@
   (println "   → プロセス再起動後も データ保持")
   (println "\n✨ Phase 2-persistent デモ完了\n")
   nil)
+;; ============================================
+;; Phase 2.5: PostgreSQL バックアップ同期
+;; ============================================
 
+(defn get-postgres-connection
+  "PostgreSQL への接続を取得
+   
+   オプション:
+   - :host     : ホスト名（デフォルト localhost）
+   - :port     : ポート番号（デフォルト 5432）
+   - :dbname   : データベース名（デフォルト xtdb_dev）
+   - :user     : ユーザー名（デフォルト postgres）
+   - :password : パスワード（デフォルト password）
+   
+   返り値: java.sql.Connection
+  "
+  [& {:keys [host port dbname user password]
+      :or {host "localhost" port 5432 dbname "xtdb_dev" 
+           user "postgres" password "password"}}]
+  (let [url (format "jdbc:postgresql://%s:%d/%s" host port dbname)
+        props (java.util.Properties.)]
+    (.setProperty props "user" user)
+    (.setProperty props "password" password)
+    (DriverManager/getConnection url props)))
+
+(defn ensure-postgres-table
+  "PostgreSQL にテーブルが存在することを確認（必要なら作成）"
+  [conn]
+  (with-open [stmt (.createStatement conn)]
+    (.execute stmt
+      "CREATE TABLE IF NOT EXISTS xtdb_backup (
+         id TEXT PRIMARY KEY,
+         type TEXT,
+         amount DECIMAL,
+         supplier TEXT,
+         date TIMESTAMP,
+         status TEXT,
+         data TEXT,
+         synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+       )")))
+
+(defn sync-documents-to-postgres
+  "XTDB のドキュメントを PostgreSQL に同期（バックアップ）
+   
+   パラメータ:
+   - node       : XTDB ノード
+   - pg-config  : PostgreSQL 接続設定マップ
+   
+   戻り値: 同期されたドキュメント数
+   
+   例:
+   (sync-documents-to-postgres node 
+     {:host \"localhost\" :password \"password\"})
+  "
+  [node & {:keys [host port dbname user password]
+           :or {host "localhost" port 5432 dbname "xtdb_dev" 
+                user "postgres" password "password"}}]
+  
+  (try
+    (with-open [conn (get-postgres-connection 
+                      :host host :port port :dbname dbname 
+                      :user user :password password)]
+      
+      ;; テーブル確認
+      (ensure-postgres-table conn)
+      
+      ;; XTDB からドキュメント取得
+      (let [docs (query-all node :documents)
+            count-synced (atom 0)]
+        
+        ;; 各ドキュメントを PostgreSQL に INSERT/UPDATE
+        (doseq [doc docs]
+          (let [id (:xt/id doc)
+                type (name (:type doc))
+                amount (:amount doc)
+                supplier (:supplier doc)
+                date (:date doc)
+                status (:status doc)
+                data (pr-str doc)]
+            
+            (with-open [stmt (.prepareStatement conn
+              "INSERT INTO xtdb_backup (id, type, amount, supplier, date, status, data) 
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (id) DO UPDATE SET 
+                 type=EXCLUDED.type, amount=EXCLUDED.amount, 
+                 supplier=EXCLUDED.supplier, status=EXCLUDED.status, 
+                 data=EXCLUDED.data")]
+              
+              (.setString stmt 1 id)
+              (.setString stmt 2 type)
+              ;; amount は Double → String → BigDecimal 経由
+              (if amount
+                (.setBigDecimal stmt 3 (java.math.BigDecimal. (str (double amount))))
+                (.setNull stmt 3 java.sql.Types/DECIMAL))
+              (.setString stmt 4 supplier)
+              ;; date は java.time.Instant に変換
+              (if date
+                (try
+                  (let [instant (if (instance? java.time.Instant date)
+                                 date
+                                 (if (instance? java.time.ZonedDateTime date)
+                                  (.toInstant ^java.time.ZonedDateTime date)
+                                  (-> date (.toInstant))))
+                       ts (java.sql.Timestamp/from instant)]
+                   (.setTimestamp stmt 5 ts))
+                  (catch Exception _
+                    (.setNull stmt 5 java.sql.Types/TIMESTAMP)))
+                (.setNull stmt 5 java.sql.Types/TIMESTAMP))
+              (.setString stmt 6 status)
+              (.setString stmt 7 data)
+              
+              (.executeUpdate stmt)
+              (swap! count-synced inc))))
+        
+        @count-synced))
+    
+    (catch Exception e
+      (println "❌ PostgreSQL 同期エラー:" (.getMessage e))
+      0)))
+
+(defn demo-phase2-postgres-backup
+  "PostgreSQL バックアップ同期デモ
+   
+   前提: PostgreSQL Docker が起動していること
+   
+   例:
+   (with-open [node (create-node :db-path \"./my-db\")]
+     (demo-phase2-persistent node)
+     (demo-phase2-postgres-backup node))
+  "
+  [node]
+  (println "\n" "="50)
+  (println "🚀 Phase 2.5: PostgreSQL バックアップ同期")
+  (println "="50)
+  
+  ;; PostgreSQL 同期実行
+  (println "\n🔄 XTDB → PostgreSQL 同期中...")
+  (try
+    (let [synced-count (sync-documents-to-postgres node
+                         :host "localhost" :password "password")]
+      (println (format "✅ %d 件のドキュメントを PostgreSQL に同期\n" synced-count))
+      
+      ;; 確認クエリ
+      (println "📊 PostgreSQL テーブル内容:")
+      (let [conn (get-postgres-connection)]
+        (try
+          (with-open [stmt (.createStatement conn)
+                      rs (.executeQuery stmt "SELECT id, type, amount FROM xtdb_backup")]
+            (while (.next rs)
+              (println (format "  • %s: %s, %.0f JPY"
+                              (.getString rs "id")
+                              (.getString rs "type")
+                              (.getBigDecimal rs "amount")))))
+          (finally (.close conn)))))
+    
+    (catch Exception e
+      (println "⚠️  PostgreSQL 接続失敗:" (.getMessage e))
+      (println "   (Docker が起動していることを確認)\n")))
+  
+  (println "💾 ファイル + PostgreSQL バックアップ完了")
+  (println "   → .xtdb/log に本体保存")
+  (println "   → xtdb_backup テーブルにバックアップ")
+  (println "\n✨ Phase 2.5 デモ完了\n")
+  nil)
 ;; 初期メッセージ
 (println "✅ xt-hledger.core モジュール読み込み完了")
