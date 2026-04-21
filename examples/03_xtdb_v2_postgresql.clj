@@ -13,7 +13,8 @@
 ;;   guix shell -m manifest.scm
 ;;   clj -i examples/03_xtdb_v2_postgresql.clj
 
-(require '[xtdb.api :as xt])
+(require '[xtdb.node :as xtn]
+         '[xtdb.api :as xt])
 
 (println "\n==========================================")
 (println "✨ XTDB v2 + PostgreSQL チュートリアル")
@@ -59,7 +60,7 @@
 ;;   docker run --rm -e POSTGRES_PASSWORD=password -p 5432:5432 postgres:16
 
 (try
-  (def node (xt/start-node pg-config))
+  (def node (xtn/start-node pg-config))
   (println "✅ XTDB v2 ノード（PostgreSQL バックエンド）起動成功\n")
   
   ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -68,11 +69,9 @@
   
   (println "3️⃣  トレードドキュメント投入（PostgreSQL に永続化）...")
 
-  (xt/submit-tx node
-    {:xtdb.api/tx-ops
-     [{:xtdb.api/op :put
-       :xtdb.api/table :trade_documents
-       :xt/id "INV-20240501-001"
+  (xt/execute-tx node
+    [[:put-docs :trade_documents
+      {:xt/id "INV-20240501-001"
        :type "Invoice"
        :supplier "ABC Trading Corp."
        :po_number "PO-2024-1001"
@@ -81,35 +80,31 @@
        :status "Draft"
        :ship_destination "Tokyo, Japan"
        :issue_date #inst "2024-05-01T00:00:00Z"
-       :created_at #inst "2024-05-01T10:30:00Z"}]})
+       :created_at #inst "2024-05-01T10:30:00Z"}]])
 
   (println "✅ インボイス投入")
 
-  (xt/submit-tx node
-    {:xtdb.api/tx-ops
-     [{:xtdb.api/op :put
-       :xtdb.api/table :trade_documents
-       :xt/id "PKG-20240502-001"
+  (xt/execute-tx node
+    [[:put-docs :trade_documents
+      {:xt/id "PKG-20240502-001"
        :type "PackingList"
        :invoice_ref "INV-20240501-001"
        :shipped_date #inst "2024-05-02T00:00:00Z"
        :line_items [{:sku "WIDGET-A" :qty 500 :unit_price 50.0}
-                    {:sku "GADGET-B" :qty 200 :unit_price 75.0}]}]})
+                    {:sku "GADGET-B" :qty 200 :unit_price 75.0}]}]])
 
   (println "✅ パッキングリスト投入")
 
-  (xt/submit-tx node
-    {:xtdb.api/tx-ops
-     [{:xtdb.api/op :put
-       :xtdb.api/table :trade_documents
-       :xt/id "BL-20240503-001"
+  (xt/execute-tx node
+    [[:put-docs :trade_documents
+      {:xt/id "BL-20240503-001"
        :type "BillOfLading"
        :invoice_ref "INV-20240501-001"
        :vessel "MV Trade Bridge"
        :container_numbers ["CONT-001" "CONT-002"]
        :eta #inst "2024-05-15T00:00:00Z"
        :port_of_lading "Port of Shanghai"
-       :port_of_discharge "Port of Tokyo"}]})
+       :port_of_discharge "Port of Tokyo"}]])
 
   (println "✅ B/L投入\n")
 
@@ -135,11 +130,9 @@
   (println "5️⃣  Bitemporal 操作: 金額修正...")
   (println "  シナリオ: 5/1 発行のINVで誤った金額（50000 -> 52000）\n")
 
-  (xt/submit-tx node
-    {:xtdb.api/tx-ops
-     [{:xtdb.api/op :put
-       :xtdb.api/table :trade_documents
-       :xt/id "INV-20240501-001"
+  (xt/execute-tx node
+    [[:put-docs :trade_documents
+      {:xt/id "INV-20240501-001"
        :type "Invoice"
        :supplier "ABC Trading Corp."
        :po_number "PO-2024-1001"
@@ -149,8 +142,7 @@
        :ship_destination "Tokyo, Japan"
        :issue_date #inst "2024-05-01T00:00:00Z"
        :created_at #inst "2024-05-01T10:30:00Z"
-       :correction_note "金額修正: 50000 -> 52000 USD"
-       :xt/valid-time #inst "2024-05-01T00:00:00Z"}]})
+       :correction_note "金額修正: 50000 -> 52000 USD"}]])
 
   (println "✅ 遡及修正完了（PostgreSQL に永続化）\n")
 
@@ -197,5 +189,3 @@
     (println "   2. xtdb_dev データベースを作成:")
     (println "      psql -U postgres -c \"CREATE DATABASE xtdb_dev;\"")
     (println "   3. 再度チュートリアルを実行")))
-
-nil
