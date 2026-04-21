@@ -1,8 +1,9 @@
 ;; examples/03_xtdb_v2_postgresql.clj
 ;; XTDB v2 + PostgreSQL バックエンド
 ;;
-;; XTDB v2 の最大の特徴：PostgreSQL をネイティブに使用できる
+;; XTDB v2 の特徴：PostgreSQL をネイティブに使用できる
 ;; これにより、既存の PostgreSQL インフラと統合可能
+;; クエリは SQL を使用（Datalog は legacy）
 ;;
 ;; 前提:
 ;;   PostgreSQL が localhost:5432 で起動していること
@@ -113,18 +114,14 @@
   (println "✅ B/L投入\n")
 
   ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
-  ;; 4. Datalog クエリ（PostgreSQL に対して実行）
+  ;; 4. SQL クエリ（PostgreSQL に対して実行）
   ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-  (println "4️⃣  DocumentLog クエリ実行...")
+  (println "4️⃣  SQL クエリ実行...")
 
   (def all-trades
     (xt/q node
-      '{:find [?id ?type ?amount ?status]
-        :where [[?e :xt/id ?id]
-                [?e :type ?type]
-                [?e :amount ?amount]
-                [?e :status ?status]]}))
+      "SELECT _id, type, amount, status FROM trade_documents"))
 
   (println "投入されたドキュメント:")
   (doseq [doc all-trades]
@@ -165,15 +162,11 @@
 
   (def updated-inv
     (xt/q node
-      '{:find [?id ?amount ?status]
-        :where [[?e :xt/id "INV-20240501-001"]
-                [?e :amount ?amount]
-                [?e :status ?status]
-                [?e :xt/id ?id]]}))
+      "SELECT _id, amount, status FROM trade_documents WHERE _id = 'INV-20240501-001'"))
 
   (println "修正後のインボイス:")
   (doseq [doc updated-inv]
-    (println "  ID:" (first doc) "金額:" (second doc) "ステータス:" (last doc)))
+    (println "  " doc))
 
   (println "\n" "=" 45)
   (println "✨ XTDB v2 + PostgreSQL チュートリアル完了")
