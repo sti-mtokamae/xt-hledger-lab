@@ -1,7 +1,8 @@
 ;; examples/02_xtdb_v2_basics.clj
 ;; XTDB v2 対応版：基本操作ガイド
 ;;
-;; XTDB v2 は v1 よりシンプルで、新しいシンタックスを使用します。
+;; XTDB v2 は SQL を標準クエリ言語とします。
+;; Datalog は legacy 機能となります。
 ;;
 ;; 実行方法:
 ;;   guix shell -m manifest.scm
@@ -64,17 +65,14 @@
 (println "✅ パッキングリストとB/L投入\n")
 
 ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
-;; 3. Datalog クエリ（v2対応）
+;; 3. SQL クエリ（v2推奨）
 ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-(println "3️⃣  Datalog クエリ: すべてのドキュメント取得...")
+(println "3️⃣  SQL クエリ: すべてのドキュメント取得...")
 
 (def all-docs
   (xt/q node
-    '{:find [?id ?type ?amount]
-      :where [[?e :xt/id ?id]
-              [?e :type ?type]
-              [?e :amount ?amount]]}))
+    "SELECT _id, type, amount FROM trade-docs"))
 
 (println "結果:")
 (doseq [doc all-docs]
@@ -82,17 +80,14 @@
 (println "")
 
 ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
-;; 4. グラフ探索（Unification）
+;; 4. SQL 結合クエリ（複雑なクエリ例）
 ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-(println "4️⃣  グラフ探索: INV-2024-001 関連ドキュメント...")
+(println "4️⃣  SQL 結合: INV-2024-001 関連ドキュメント...")
 
 (def related
   (xt/q node
-    '{:find [?id ?type]
-      :where [[?e :invoice-ref "INV-2024-001"]
-              [?e :xt/id ?id]
-              [?e :type ?type]]}))
+    "SELECT _id, type FROM trade-docs WHERE invoice_ref = 'INV-2024-001'"))
 
 (println "関連ドキュメント:")
 (doseq [doc related]
@@ -148,23 +143,20 @@
 ;; 修正後のデータを確認
 (def updated
   (xt/q node
-    '{:find [?id ?amount ?status]
-      :where [[?e :xt/id "INV-2024-001"]
-              [?e :amount ?amount]
-              [?e :status ?status]]}))
+    "SELECT _id, amount, status FROM trade-docs WHERE _id = 'INV-2024-001'"))
 
 (println "修正後の最新データ:")
 (doseq [doc updated]
-  (println "  ID:" (first doc) "金額:" (second doc) "ステータス:" (last doc)))
+  (println "  " doc))
 
 (println "\n" "=" 40)
 (println "✨ チュートリアル完了")
 (println "=" 40)
 
 (println "\n📚 XTDB v2 のポイント:")
+(println "  • SQL が標準クエリ言語（Datalog は legacy）")
 (println "  • Bitemporal: 過去のデータへの遡及修正が可能")
 (println "  • Immutable: すべての変更が監査ログとして保持される")
-(println "  • Datalog: グラフ構造のクエリが直感的")
 (println "\n次のステップ: ")
 (println "  1. src/xt_hledger/core.clj で統合ロジック実装")
 (println "  2. hledger との連携テスト")
