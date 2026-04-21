@@ -1,5 +1,7 @@
-{:deps {;; XTDB v2.1.0 - Bitemporal database with PostgreSQL support (built-in to core)
+{:deps {;; XTDB v2.1.0 - Bitemporal database with PostgreSQL support (via remotes module)
          com.xtdb/xtdb-core      {:mvn/version "2.1.0"}
+         ;; postgres-source: Available via JitPack/GitHub once Gradle build succeeds
+         ;; For now, using remotes pattern written in code (Phase 2) but tested separately
 
          ;; Clojure standard libraries
          org.clojure/clojure      {:mvn/version "1.12.0"}
@@ -15,7 +17,9 @@
 
  ;; Maven repositories with fallbacks
  :mvn/repos
- {"central"   {:url "https://repo1.maven.org/maven2/"}
+ {"jitpack"   {:url "https://jitpack.io"}
+  "github-xtdb" {:url "https://maven.pkg.github.com/xtdb/xtdb"}
+  "central"   {:url "https://repo1.maven.org/maven2/"}
   "aliyun-central" {:url "https://maven.aliyun.com/repository/central"}
   "clojars"   {:url "https://repo.clojars.org/"}
   "clojars-mirror" {:url "https://mirrors.aliyun.com/clojars/"}}

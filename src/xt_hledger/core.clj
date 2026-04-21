@@ -17,19 +17,26 @@
   "XTDB ノード（DBエンジン）を起動
    
    オプション:
-   - :persist? : ディスクに永続化するか（デフォルト false）
-   - :config   : カスタム設定マップ
+   - :persist? : ディスクに永続化するか（デフォルト true）
+   - :db-path  : 永続化ディレクトリパス（デフォルト \".xtdb\"）
+   - :config   : カスタム設定マップ（merge される）
    
    返り値: xtdb.api.Xtdb インスタンス（with-open で使用）
    
-   例:
-   (with-open [node (create-node)]
+   例（永続化版）:
+   (with-open [node (create-node :db-path \"./my-db\")]
      (xt/execute-tx node [...])
      (xt/q node [...]))
+   
+   例（インメモリ版）:
+   (with-open [node (create-node :persist? false)]
+     ...)
   "
-  [& {:keys [persist? config] :or {persist? false config {}}}]
+  [& {:keys [persist? db-path config] :or {persist? true db-path ".xtdb" config {}}}]
   (let [final-config (if persist?
-                       (merge config {:log [:local {:path ".xtdb/log"}]})
+                       (merge config 
+                              {:log [:local {:path (str db-path "/log")}]
+                               :index-store [:local {:path (str db-path "/index-store")}]})
                        config)]
     (xtn/start-node final-config)))
 
@@ -302,31 +309,60 @@
 ;; ============================================
 
 (defn create-node-with-postgres
-  "PostgreSQL バックエンド付き XTDB ノードを起動
+  "PostgreSQL remotes外部ソース付き XTDB ノードを起動（v2.1.0+）
    
    オプション:
-   - :host     : PostgreSQL ホスト（デフォルト localhost）
-   - :port     : PostgreSQL ポート（デフォルト 5432）
-   - :user     : ユーザー名（デフォルト postgres）
-   - :password : パスワード（デフォルト postgres）
-   - :dbname   : データベース名（デフォルト xtdb_dev）
+   - :host              : PostgreSQL ホスト（デフォルト localhost）
+   - :port              : PostgreSQL ポート（デフォルト 5432）
+   - :user              : ユーザー名（デフォルト postgres）
+   - :password          : パスワード（デフォルト password）
+   - :dbname            : データベース名（デフォルト xtdb_dev）
+   - :slot-name         : リプリケーションスロット名（デフォルト xtdb_slot）
+   - :publication-name  : パブリケーション名（デフォルト xtdb_publication）
    
-   返り値: PostgreSQL バックエンド付き XTDB ノード
+   返り値: PostgreSQL remotes外部ソース付き XTDB ノード
+   
+   注: この関数はPostgreSQL側の準備を要求
+   - リプリケーションスロット: CREATE_REPLICATION_SLOT ... WITH (PLUGIN 'pgoutput')
+   - パブリケーション: CREATE PUBLICATION ...
    
    例:
-   (with-open [node (create-node-with-postgres)]
-     (xt/execute-tx node [...]))
+   (with-open [node (create-node-with-postgres :password \"password\")]
+     (demo-phase2 node))
+  "
+  [& {:keys [host port user password dbname slot-name publication-name]
+      :or {host "localhost" port 5432 user "postgres" 
+           password "password" dbname "xtdb_dev"
+           slot-name "xtdb_slot" publication-name "xtdb_publication"}}]
+  
+  (xtn/start-node
+    {:remotes
+     {"postgres-remote" 
+      {:xtdb.postgres/remote
+       {:hostname host :port port :database dbname 
+        :username user :password password}}}
+     
+     :databases
+     {"xtdb"
+      {:external-source
+       {:xtdb.postgres/source
+        {:remote "postgres-remote"
+         :slot-name slot-name
+         :publication-name publication-name
+         :schema-include-list ["public"]}}}}}))
+
+(defn create-node-with-postgres-old
+  "DEPRECATED: Old :postgres log type approach (not supported in v2.1.0)
+   
+   Use create-node-with-postgres instead with remotes.
   "
   [& {:keys [host port user password dbname]
       :or {host "localhost" port 5432 user "postgres" 
            password "postgres" dbname "xtdb_dev"}}]
   
-  (let [pg-config
-        {:log   [:postgres {:host host :port port :user user 
-                           :password password :dbname dbname}]
-         :storage [:postgres {:host host :port port :user user 
-                             :password password :dbname dbname}]}]
-    (xtn/start-node pg-config)))
+  (throw (ex-info "PostgreSQL log type :postgres is not supported in XTDB v2.1.0"
+    {:reason "Use remotes-based configuration instead"
+     :recommended-function "create-node-with-postgres"})))
 
 (defn extract-audit-trail
   "すべての過去バージョンを抽出（Bitemporal クエリ）
@@ -419,6 +455,85 @@
   (println "   → Docker コンテナ内に保存されました\n")
   
   (println "✨ Phase 2 デモ完了\n")
+  nil)
+
+;; ============================================
+;; Phase 2-persistent: ディスク永続化デモ
+;; ============================================
+
+(defn demo-phase2-persistent
+  "永続化 XTDB ノード（ファイルベース）のデモ
+   
+   前提: PostgreSQL は不要（ローカルディスク使用）
+   
+   例:
+   (with-open [node (create-node :db-path \"./my-ledger-db\")]
+     (demo-phase2-persistent node))
+  "
+  [node]
+  (println "\n" "="50)
+  (println "🚀 Phase 2-persistent: ディスク永続化")
+  (println "="50)
+  
+  ;; サンプルドキュメント投入（複数件）
+  (println "\n📝 会計伝票を投入中...")
+  (put-documents node :documents
+    [{:xt/id "DOC-001"
+      :type :invoice
+      :date #inst "2025-04-01T00:00:00Z"
+      :supplier "Supplier A"
+      :amount 100000.00
+      :currency "JPY"
+      :status "issued"}
+     {:xt/id "DOC-002"
+      :type :receipt
+      :date #inst "2025-04-02T00:00:00Z"
+      :supplier "Supplier B"
+      :amount 50000.00
+      :currency "JPY"
+      :status "received"}
+     {:xt/id "DOC-003"
+      :type :invoice
+      :date #inst "2025-04-03T00:00:00Z"
+      :supplier "Supplier C"
+      :amount 75000.00
+      :currency "JPY"
+      :status "issued"}])
+  (println "✅ 3件の伝票を投入完了\n")
+  
+  ;; データ確認
+  (println "📊 ディスク永続化されたドキュメント:")
+  (let [docs (query-all node :documents)]
+    (doseq [doc docs]
+      (println "  " (format "%s: %s %,.0f %s" 
+                           (:xt/id doc) 
+                           (:type doc) 
+                           (:amount doc) 
+                           (:currency doc)))))
+  
+  ;; 金額修正（Bitemporal）
+  (println "\n🔄 Bitemporal: 伝票金額を遡及修正...")
+  (put-documents node :documents
+    [{:xt/id "DOC-001"
+      :type :invoice
+      :date #inst "2025-04-01T00:00:00Z"
+      :supplier "Supplier A"
+      :amount 110000.00  ; 修正: 100000 -> 110000
+      :currency "JPY"
+      :status "issued"
+      :correction_note "Price correction applied"}])
+  (println "✅ DOC-001 を修正（100000 JPY → 110000 JPY）\n")
+  
+  ;; hledger ジャーナル生成
+  (println "📋 hledger ジャーナル生成:")
+  (let [docs (query-all node :documents)
+        journal (documents->journal docs)]
+    (println journal))
+  
+  (println "\n💾 ディスク永続化済み")
+  (println "   → .xtdb/log, .xtdb/index-store に保存")
+  (println "   → プロセス再起動後も データ保持")
+  (println "\n✨ Phase 2-persistent デモ完了\n")
   nil)
 
 ;; 初期メッセージ
