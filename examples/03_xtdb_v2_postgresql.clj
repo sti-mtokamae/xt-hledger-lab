@@ -50,115 +50,100 @@
 (println "   └─ User: postgres\n")
 
 ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
-;; 2. XTDB v2 ノード起動（PostgreSQL バックエンド）
+;; サンプルデータ定義
 ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-(println "2️⃣  XTDB v2 ノード起動中...")
+(def sample-documents
+  "チュートリアル用のサンプルドキュメント"
+  [{:xt/id "INV-20240501-001"
+    :type "Invoice"
+    :supplier "ABC Trading Corp."
+    :po_number "PO-2024-1001"
+    :amount 50000.00
+    :currency "USD"
+    :status "Draft"
+    :ship_destination "Tokyo, Japan"
+    :issue_date #inst "2024-05-01T00:00:00Z"
+    :created_at #inst "2024-05-01T10:30:00Z"}
 
-;; ※ PostgreSQL に接続できない場合、例外が発生します
-;; その場合は、Docker を使用して PostgreSQL を起動してください:
-;;   docker run --rm -e POSTGRES_PASSWORD=password -p 5432:5432 postgres:16
+   {:xt/id "PKG-20240502-001"
+    :type "PackingList"
+    :invoice_ref "INV-20240501-001"
+    :shipped_date #inst "2024-05-02T00:00:00Z"
+    :line_items [{:sku "WIDGET-A" :qty 500 :unit_price 50.0}
+                 {:sku "GADGET-B" :qty 200 :unit_price 75.0}]}
 
-(try
-  (def node (xtn/start-node pg-config))
-  (println "✅ XTDB v2 ノード（PostgreSQL バックエンド）起動成功\n")
-  
-  ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
-  ;; 3. トレードドキュメント投入
-  ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
-  
+   {:xt/id "BL-20240503-001"
+    :type "BillOfLading"
+    :invoice_ref "INV-20240501-001"
+    :vessel "MV Trade Bridge"
+    :container_numbers ["CONT-001" "CONT-002"]
+    :eta #inst "2024-05-15T00:00:00Z"
+    :port_of_lading "Port of Shanghai"
+    :port_of_discharge "Port of Tokyo"}])
+
+(def sample-queries
+  "チュートリアル用のクエリ"
+  [{:section 4
+    :title "投入されたドキュメント"
+    :sql "SELECT _id, type, amount, status FROM trade_documents"}
+
+   {:section 6
+    :title "修正後のインボイス"
+    :sql "SELECT _id, amount, status FROM trade_documents WHERE _id = 'INV-20240501-001'"}])
+
+(def corrections
+  "修正適用用のドキュメント"
+  [{:xt/id "INV-20240501-001"
+    :type "Invoice"
+    :supplier "ABC Trading Corp."
+    :po_number "PO-2024-1001"
+    :amount 52000.00              ; 修正後
+    :currency "USD"
+    :status "Draft"
+    :ship_destination "Tokyo, Japan"
+    :issue_date #inst "2024-05-01T00:00:00Z"
+    :created_at #inst "2024-05-01T10:30:00Z"
+    :correction_note "金額修正: 50000 -> 52000 USD"}])
+
+;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
+;; チュートリアル操作関数
+;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+(defn- run-postgresql-tutorial [node]
+  ;; セクション 3: ドキュメント投入
   (println "3️⃣  トレードドキュメント投入（PostgreSQL に永続化）...")
-
-  (xt/execute-tx node
-    [[:put-docs :trade_documents
-      {:xt/id "INV-20240501-001"
-       :type "Invoice"
-       :supplier "ABC Trading Corp."
-       :po_number "PO-2024-1001"
-       :amount 50000.00
-       :currency "USD"
-       :status "Draft"
-       :ship_destination "Tokyo, Japan"
-       :issue_date #inst "2024-05-01T00:00:00Z"
-       :created_at #inst "2024-05-01T10:30:00Z"}]])
-
-  (println "✅ インボイス投入")
-
-  (xt/execute-tx node
-    [[:put-docs :trade_documents
-      {:xt/id "PKG-20240502-001"
-       :type "PackingList"
-       :invoice_ref "INV-20240501-001"
-       :shipped_date #inst "2024-05-02T00:00:00Z"
-       :line_items [{:sku "WIDGET-A" :qty 500 :unit_price 50.0}
-                    {:sku "GADGET-B" :qty 200 :unit_price 75.0}]}]])
-
-  (println "✅ パッキングリスト投入")
-
-  (xt/execute-tx node
-    [[:put-docs :trade_documents
-      {:xt/id "BL-20240503-001"
-       :type "BillOfLading"
-       :invoice_ref "INV-20240501-001"
-       :vessel "MV Trade Bridge"
-       :container_numbers ["CONT-001" "CONT-002"]
-       :eta #inst "2024-05-15T00:00:00Z"
-       :port_of_lading "Port of Shanghai"
-       :port_of_discharge "Port of Tokyo"}]])
-
-  (println "✅ B/L投入\n")
-
-  ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
-  ;; 4. SQL クエリ（PostgreSQL に対して実行）
-  ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-  (println "4️⃣  SQL クエリ実行...")
-
-  (def all-trades
-    (xt/q node
-      "SELECT _id, type, amount, status FROM trade_documents"))
-
-  (println "投入されたドキュメント:")
-  (doseq [doc all-trades]
-    (println "  " doc))
+  (doseq [{:keys [type] :as doc} sample-documents]
+    (xt/execute-tx node [[:put-docs :trade_documents doc]])
+    (let [type-ja (case type
+                    "Invoice" "インボイス"
+                    "PackingList" "パッキングリスト"
+                    "BillOfLading" "B/L"
+                    type)]
+      (println (str "  ✅ " type-ja " 投入"))))
   (println "")
 
-  ;; +++++++++++alltogether
-  ;; 5. Bitemporal クエリ: Docroot の遡及修正
-  ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
+  ;; セクション 4: クエリ実行
+  (println "4️⃣  SQL クエリ実行...")
+  (let [query (first sample-queries)]
+    (println (:title query))
+    (doseq [doc (xt/q node (:sql query))]
+      (println "  " doc)))
+  (println "")
 
+  ;; セクション 5: 修正適用
   (println "5️⃣  Bitemporal 操作: 金額修正...")
   (println "  シナリオ: 5/1 発行のINVで誤った金額（50000 -> 52000）\n")
-
-  (xt/execute-tx node
-    [[:put-docs :trade_documents
-      {:xt/id "INV-20240501-001"
-       :type "Invoice"
-       :supplier "ABC Trading Corp."
-       :po_number "PO-2024-1001"
-       :amount 52000.00              ; 修正後
-       :currency "USD"
-       :status "Draft"
-       :ship_destination "Tokyo, Japan"
-       :issue_date #inst "2024-05-01T00:00:00Z"
-       :created_at #inst "2024-05-01T10:30:00Z"
-       :correction_note "金額修正: 50000 -> 52000 USD"}]])
-
+  (doseq [doc corrections]
+    (xt/execute-tx node [[:put-docs :trade_documents doc]]))
   (println "✅ 遡及修正完了（PostgreSQL に永続化）\n")
 
-  ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
-  ;; 6. PostgreSQL 直接クエリ（プールを活用）
-  ;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
-
+  ;; セクション 6: 修正結果確認
   (println "6️⃣  最新の INV 情報を確認...")
-
-  (def updated-inv
-    (xt/q node
-      "SELECT _id, amount, status FROM trade_documents WHERE _id = 'INV-20240501-001'"))
-
-  (println "修正後のインボイス:")
-  (doseq [doc updated-inv]
-    (println "  " doc))
+  (let [query (second sample-queries)]
+    (println (:title query))
+    (doseq [doc (xt/q node (:sql query))]
+      (println "  " doc)))
 
   (println "\n" "=" 45)
   (println "✨ XTDB v2 + PostgreSQL チュートリアル完了")
@@ -178,8 +163,20 @@
   (println "\n次のステップ:")
   (println "  1. src/xt_hledger/postgres.clj で Bitemporal 会計ロジック実装")
   (println "  2. hledger へのマッピング（PostgreSQL -> Journal形式）")
-  (println "  3. 複式簿記の整合性チェック")
+  (println "  3. 複式簿記の整合性チェック"))
 
+;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
+;; 2. XTDB v2 ノード起動（PostgreSQL バックエンド）
+;; +++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+(println "2️⃣  XTDB v2 ノード起動中...")
+
+;; ※ PostgreSQL に接続できない場合、例外が発生します
+;; その場合は、Docker を使用して PostgreSQL を起動してください:
+;;   docker run --rm -e POSTGRES_PASSWORD=password -p 5432:5432 postgres:16
+
+(try
+  (def node (xtn/start-node pg-config))
   (catch Exception e
     (println "❌ PostgreSQL 接続エラー:")
     (println "   " (.getMessage e))
@@ -189,3 +186,8 @@
     (println "   2. xtdb_dev データベースを作成:")
     (println "      psql -U postgres -c \"CREATE DATABASE xtdb_dev;\"")
     (println "   3. 再度チュートリアルを実行")))
+
+;; ノード起動に成功した場合のみ、以降の操作を実行
+(when (resolve 'node)
+  (println "✅ XTDB v2 ノード（PostgreSQL バックエンド）起動成功\n")
+  (run-postgresql-tutorial node))
